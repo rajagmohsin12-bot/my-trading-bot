@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.5.0 (Strict Indentation Blueprint Fix)
+Version: 2.6.0 (Interpreter-Verified Formatting Base)
 """
 
 import streamlit as st
