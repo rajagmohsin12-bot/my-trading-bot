@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.4.0 (Machine-Compiled Indentation Fixed)
+Version: 2.5.0 (Strict Indentation Blueprint Fix)
 """
 
 import streamlit as st
@@ -221,7 +221,7 @@ class InstitutionalCertaintyScorer:
         return {'certainty_score': round(certainty_score, 2), 'signal': signal}
 
 # ============================================================================
-# DASHBOARD UI & RENDERING PIPELINE (CLEAN STATIC NO-BREAK LOGIC)
+# DASHBOARD UI & RENDERING PIPELINE (GLOBAL TEMPLATE METHODS)
 # ============================================================================
 
 def generate_analytical_chart(data: pd.DataFrame, kalman_line: np.ndarray, title: str):
@@ -243,5 +243,6 @@ def generate_analytical_chart(data: pd.DataFrame, kalman_line: np.ndarray, title
     
     fig.update_layout(xaxis_rangeslider_visible=False, template='plotly_dark', height=550)
     return fig
+
 
 class MarketDataFetcher:
