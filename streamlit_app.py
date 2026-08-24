@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.3.0 (Direct Bypass Fixed)
+Version: 2.4.0 (Machine-Compiled Indentation Fixed)
 """
 
 import streamlit as st
@@ -221,10 +221,11 @@ class InstitutionalCertaintyScorer:
         return {'certainty_score': round(certainty_score, 2), 'signal': signal}
 
 # ============================================================================
-# DASHBOARD UI & RENDERING PIPELINE (STATIC INLINE ELEMENTS)
+# DASHBOARD UI & RENDERING PIPELINE (CLEAN STATIC NO-BREAK LOGIC)
 # ============================================================================
 
 def generate_analytical_chart(data: pd.DataFrame, kalman_line: np.ndarray, title: str):
+    """Render analytical candlestick charts safely with mathematical overlay matrices"""
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
     
     fig.add_trace(go.Candlestick(
@@ -244,4 +245,3 @@ def generate_analytical_chart(data: pd.DataFrame, kalman_line: np.ndarray, title
     return fig
 
 class MarketDataFetcher:
-    def __init__(self):
