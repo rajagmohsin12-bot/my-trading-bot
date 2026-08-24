@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.0.0
+Version: 2.1.0 (Machine-Compiled Indentation Patch)
 """
 
 import streamlit as st
@@ -22,7 +22,7 @@ class AccessControlManager:
     """Advanced access control system with admin-only user management"""
     
     def __init__(self):
-        self.admin_key = "admin_2024_secure"  # Admin backup key
+        self.admin_key = "admin_2024_secure"
         self.authorized_users = {
             "quant_trader": "5f4dcc3b5aa765d61d8327deb882cf99",  # password: password
             "institutional": "e10adc3949ba59abbe56e057f20f883e",  # password: 123456
@@ -39,7 +39,7 @@ class AccessControlManager:
         return False
 
 # ============================================================================
-# INSTITUTIONAL QUANTITATIVE STRATEGIES
+# INSTITUTIONAL QUANTITATIVE STRATEGIES (DEEPSEEK ARCHITECTURE)
 # ============================================================================
 
 class KalmanFilterArbitrage:
@@ -58,8 +58,8 @@ class KalmanFilterArbitrage:
         state_means = np.zeros(n)
         state_covs = np.zeros(n)
         
-        state_means = prices
-        state_covs = 1.0
+        state_means[0] = prices[0]
+        state_covs[0] = 1.0
         
         for i in range(1, n):
             pred_mean = state_means[i-1]
@@ -77,9 +77,9 @@ class KalmanFilterArbitrage:
         z_score = (current_price - kalman_value) / (std_dev if std_dev > 0 else 1.0)
         
         if z_score > 2.0:
-            signal = 'SHORT'  # Price structurally overvalued
+            signal = 'SHORT'
         elif z_score < -2.0:
-            signal = 'LONG'   # Price structurally undervalued
+            signal = 'LONG'
         else:
             signal = 'NEUTRAL'
         
@@ -127,9 +127,9 @@ class VolatilityBreakoutStrategy:
         volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
         
         if prev_price <= upper_band.iloc[-2] and current_price > upper_band.iloc[-1] and volume_ratio > 1.5:
-            signal = 'LONG'  # Liquidity sweep upwards
+            signal = 'LONG'
         elif prev_price >= lower_band.iloc[-2] and current_price < lower_band.iloc[-1] and volume_ratio > 1.5:
-            signal = 'SHORT' # Downward breakdown with block volume
+            signal = 'SHORT'
         else:
             signal = 'NEUTRAL'
         
@@ -246,11 +246,10 @@ class InstitutionalCertaintyScorer:
         return {'certainty_score': round(certainty_score, 2), 'signal': signal}
 
 # ============================================================================
-# DASHBOARD UI & RENDERING
+# DASHBOARD UI & RENDERING PIPELINE (STRICT FLAT INDENTATION STATIC LOGIC)
 # ============================================================================
 
-class DashboardRenderer:
-    """Professional hedge-fund style dashboard UI rendering template"""
-    
-    @staticmethod
-    def apply_custom_css():
+def apply_terminal_css():
+    """Apply hedge-fund style black/dark custom CSS interface mapping"""
+    st.markdown("""
+    <style>
