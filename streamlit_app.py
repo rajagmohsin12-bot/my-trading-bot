@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.2.0 (Verified Multi-Quote Syntax Fix)
+Version: 2.3.0 (Direct Bypass Fixed)
 """
 
 import streamlit as st
@@ -10,33 +10,8 @@ import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import hashlib
 import warnings
 warnings.filterwarnings('ignore')
-
-# ============================================================================
-# ENTERPRISE SECURITY & ACCESS CONTROL
-# ============================================================================
-
-class AccessControlManager:
-    """Advanced access control system with admin-only user management"""
-    
-    def __init__(self):
-        self.admin_key = "admin_2024_secure"
-        self.authorized_users = {
-            "quant_trader": "5f4dcc3b5aa765d61d8327deb882cf99",  # password: password
-            "institutional": "e10adc3949ba59abbe56e057f20f883e",  # password: 123456
-        }
-    
-    def hash_password(self, password: str) -> str:
-        """Secure password hashing"""
-        return hashlib.md5(password.encode()).hexdigest()
-    
-    def verify_user(self, username: str, password: str) -> bool:
-        """Verify user credentials"""
-        if username in self.authorized_users:
-            return self.authorized_users[username] == self.hash_password(password)
-        return False
 
 # ============================================================================
 # INSTITUTIONAL QUANTITATIVE STRATEGIES (DEEPSEEK ARCHITECTURE)
@@ -246,8 +221,27 @@ class InstitutionalCertaintyScorer:
         return {'certainty_score': round(certainty_score, 2), 'signal': signal}
 
 # ============================================================================
-# DASHBOARD UI & RENDERING PIPELINE (STRICT FLAT STATIC CSS BLOCK FIXED)
+# DASHBOARD UI & RENDERING PIPELINE (STATIC INLINE ELEMENTS)
 # ============================================================================
 
-def apply_terminal_css():
-    """Apply premium style layout directly without multi-line breaks"""
+def generate_analytical_chart(data: pd.DataFrame, kalman_line: np.ndarray, title: str):
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+    
+    fig.add_trace(go.Candlestick(
+        x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Market Candlestick Vector",
+        increasing_line_color='#26a69a', decreasing_line_color='#ef5350'
+    ), row=1, col=1)
+    
+    if kalman_line is not None and not np.isnan(kalman_line).all():
+        fig.add_trace(go.Scatter(
+            x=data.index, y=kalman_line, name="Kalman Filter Signal Line", line=dict(color='#dd6b20', width=2, dash='dot')
+        ), row=1, col=1)
+        
+    colors = ['#26a69a' if c >= o else '#ef5350' for o, c in zip(data['Open'], data['Close'])]
+    fig.add_trace(go.Bar(x=data.index, y=data['Volume'], marker_color=colors, name="Institutional Net Volume", opacity=0.4), row=2, col=1)
+    
+    fig.update_layout(xaxis_rangeslider_visible=False, template='plotly_dark', height=550)
+    return fig
+
+class MarketDataFetcher:
+    def __init__(self):
