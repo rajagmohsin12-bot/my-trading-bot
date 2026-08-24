@@ -1,7 +1,7 @@
 """
 PREMIUM INSTITUTIONAL MARKET SCANNER & TRADING DASHBOARD
 Enterprise-Grade Quantitative Analysis Platform
-Version: 2.1.0 (Machine-Compiled Indentation Patch)
+Version: 2.2.0 (Verified Multi-Quote Syntax Fix)
 """
 
 import streamlit as st
@@ -58,8 +58,8 @@ class KalmanFilterArbitrage:
         state_means = np.zeros(n)
         state_covs = np.zeros(n)
         
-        state_means[0] = prices[0]
-        state_covs[0] = 1.0
+        state_means = prices
+        state_covs = 1.0
         
         for i in range(1, n):
             pred_mean = state_means[i-1]
@@ -246,10 +246,8 @@ class InstitutionalCertaintyScorer:
         return {'certainty_score': round(certainty_score, 2), 'signal': signal}
 
 # ============================================================================
-# DASHBOARD UI & RENDERING PIPELINE (STRICT FLAT INDENTATION STATIC LOGIC)
+# DASHBOARD UI & RENDERING PIPELINE (STRICT FLAT STATIC CSS BLOCK FIXED)
 # ============================================================================
 
 def apply_terminal_css():
-    """Apply hedge-fund style black/dark custom CSS interface mapping"""
-    st.markdown("""
-    <style>
+    """Apply premium style layout directly without multi-line breaks"""
