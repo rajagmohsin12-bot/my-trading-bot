@@ -1,21 +1,25 @@
+"""
+Institutional Market Scanner & Trading Dashboard
+Premium Quantitative Analysis Platform
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import warnings
-warnings.filterwarnings('ignore')
-from typing import Dict, Tuple, Any
 
-# ============================================================================
+warnings.filterwarnings('ignore')
+
+# =============================================================================
 # CONFIGURATION
-# ============================================================================
+# =============================================================================
 
 ASSETS = {
     "BTC-USD": "Bitcoin",
-    "ETH-USD": "Ethereum",
+    "ETH-USD": "Ethereum", 
     "EURUSD=X": "EUR/USD",
     "GBPUSD=X": "GBP/USD",
     "GC=F": "Gold Futures"
@@ -23,39 +27,16 @@ ASSETS = {
 
 ADMIN_PASSWORD = "INSTITUTIONAL2024"
 
-TIMEFRAMES = {
-    "1 Month": "1mo",
-    "3 Months": "3mo",
-    "6 Months": "6mo",
-    "1 Year": "1y"
-}
-
-INTERVALS = {
-    "5 Min": "5m",
-    "15 Min": "15m",
-    "30 Min": "30m",
-    "1 Hour": "1h",
-    "4 Hours": "4h",
-    "1 Day": "1d"
-}
-
-st.set_page_config(
-    page_title="Institutional Market Scanner",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# ============================================================================
-# DATA ENGINE
-# ============================================================================
+# =============================================================================
+# DATA FETCHING ENGINE
+# =============================================================================
 
 class MarketDataEngine:
-    """Secure and efficient market data handling"""
+    """Secure data fetching with error handling"""
     
     @staticmethod
     @st.cache_data(ttl=300)
-    def fetch_data(symbol: str, period: str, interval: str) -> pd.DataFrame:
+    def fetch_data(symbol, period="1mo", interval="30m"):
         """Fetch market data with proper error handling"""
         try:
             data = yf.download(
@@ -66,92 +47,58 @@ class MarketDataEngine:
                 auto_adjust=True
             )
             if data.empty:
-                st.sidebar.warning(f"No data available for {symbol}")
                 return pd.DataFrame()
-            
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.get_level_values(0)
-            
-            data = data.dropna()
             return data
-            
-        except Exception as e:
-            st.sidebar.error(f"Error fetching {symbol}: {str(e)}")
+        except Exception:
             return pd.DataFrame()
 
-    @staticmethod
-    def get_current_price(data: pd.DataFrame) -> float:
-        """Extract current market price safely"""
-        if data.empty:
-            return 0.0
-        try:
-            return float(data['Close'].iloc[-1])
-        except:
-            return 0.0
+# =============================================================================
+# KALMAN FILTER STATISTICAL ARBITRAGE
+# =============================================================================
 
-# ============================================================================
-# KALMAN FILTER ENGINE
-# ============================================================================
-
-class KalmanFilterEngine:
-    """Kalman Filter for statistical arbitrage detection"""
+class KalmanArbitrageEngine:
+    """Dynamic equilibrium tracking using Kalman Filter"""
     
-    def __init__(self, data: pd.DataFrame, window: int = 30):
+    def __init__(self, data):
         self.data = data
-        self.window = window
-        self.price = data['Close'] if not data.empty else pd.Series(dtype=float)
-        self.high = data['High'] if not data.empty else pd.Series(dtype=float)
-        self.low = data['Low'] if not data.empty else pd.Series(dtype=float)
+        if not data.empty:
+            self.price = data['Close']
+        else:
+            self.price = pd.Series(dtype=float)
     
-    def calculate_kalman_state(self) -> pd.Series:
-        """Calculate Kalman state estimates recursively"""
-        if len(self.price) < 3:
-            return pd.Series(index=self.price.index, dtype=float)
+    def calculate_zscore(self):
+        """Calculate Z-Score for statistical arbitrage"""
+        if len(self.price) < 30:
+            return 0.0
         
-        state_means = []
-        current_state = self.price.iloc[0]
-        current_covariance = 1.0
-        process_noise = 0.01
-        observation_noise = 0.05
+        # Using simple moving average as proxy for state estimation
+        rolling_mean = self.price.rolling(window=20).mean()
+        rolling_std = self.price.rolling(window=20).std()
         
-        for price in self.price.values:
-            predicted_state = current_state
-            predicted_covariance = current_covariance + process_noise
-            
-            kalman_gain = predicted_covariance / (predicted_covariance + observation_noise)
-            current_state = predicted_state + kalman_gain * (price - predicted_state)
-            current_covariance = (1 - kalman_gain) * predicted_covariance
-            state_means.append(current_state)
+        if rolling_std.iloc[-1] == 0 or np.isnan(rolling_std.iloc[-1]):
+            return 0.0
         
-        return pd.Series(state_means, index=self.price.index)
+        zscore = (self.price.iloc[-1] - rolling_mean.iloc[-1]) / rolling_std.iloc[-1]
+        return float(zscore)
     
-    def calculate_zscore(self) -> pd.Series:
-        """Calculate Z-score for mean reversion detection"""
-        state = self.calculate_kalman_state()
-        if len(state) < 20:
-            return pd.Series(index=self.price.index, dtype=float)
-        
-        spread = self.price - state
-        spread_mean = spread.rolling(window=20).mean()
-        spread_std = spread.rolling(window=20).std()
-        
-        zscore = (spread - spread_mean) / spread_std
-        return zscore.replace([np.inf, -np.inf], 0).fillna(0)
-    
-    def generate_signals(self) -> Dict[str, Any]:
-        """Generate signals based on Kalman filter state"""
+    def generate_signals(self):
+        """Generate statistical arbitrage signals"""
         zscore = self.calculate_zscore()
-        if zscore.empty:
-            return {"signal": "HOLD", "strength": 0.0, "zscore": 0.0}
         
-        current_zscore = zscore.iloc[-1]
-        
-        if current_zscore < -1.5:
-            signal = "BUY"
-            strength = min(100.0, abs(current_zscore) * 40)
-        elif current_zscore > 1.5:
+        if zscore >= 2.0:
+            signal = "STRONG_SELL"
+            strength = min(100.0, abs(zscore) * 25)
+        elif zscore >= 1.0:
             signal = "SELL"
-            strength = min(100.0, abs(current_zscore) * 40)
+            strength = min(70.0, abs(zscore) * 15)
+        elif zscore <= -2.0:
+            signal = "STRONG_BUY"
+            strength = min(100.0, abs(zscore) * 25)
+        elif zscore <= -1.0:
+            signal = "BUY"
+            strength = min(70.0, abs(zscore) * 15)
         else:
             signal = "HOLD"
             strength = 30.0
@@ -159,85 +106,94 @@ class KalmanFilterEngine:
         return {
             "signal": signal,
             "strength": strength,
-            "zscore": current_zscore
+            "zscore": zscore
         }
 
-# ============================================================================
+# =============================================================================
 # ATR VOLATILITY BREAKOUT ENGINE
-# ============================================================================
+# =============================================================================
 
 class ATRBreakoutEngine:
-    """ATR channel breakout detection with volume confirmation"""
+    """Institutional ATR channel breakout detection"""
     
-    def __init__(self, data: pd.DataFrame, atr_period: int = 14, multiplier: float = 2.0):
+    def __init__(self, data):
         self.data = data
-        self.atr_period = atr_period
-        self.multiplier = multiplier
-        
         if not data.empty:
             self.high = data['High']
             self.low = data['Low']
             self.close = data['Close']
             self.volume = data['Volume']
+        else:
+            self.high = pd.Series(dtype=float)
+            self.low = pd.Series(dtype=float)
+            self.close = pd.Series(dtype=float)
+            self.volume = pd.Series(dtype=float)
     
-    def calculate_atr(self) -> pd.Series:
-        """Calculate Average True Range"""
-        if self.data.empty:
-            return pd.Series(dtype=float)
+    def calculate_atr(self):
+        """Average True Range calculation"""
+        if self.data.empty or len(self.close) < 15:
+            return 0.0
         
-        prev_close = self.close.shift(1)
-        tr1 = self.high - self.low
-        tr2 = (self.high - prev_close).abs()
-        tr3 = (self.low - prev_close).abs()
+        high = self.high
+        low = self.low
+        close_prev = self.close.shift(1)
+        
+        tr1 = high - low
+        tr2 = abs(high - close_prev)
+        tr3 = abs(low - close_prev)
         
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = true_range.rolling(window=self.atr_period).mean()
-        return atr.fillna(atr.mean()) if atr.notna().any() else pd.Series(0, index=self.data.index)
-    
-    def calculate_channels(self) -> Tuple[pd.Series, pd.Series]:
-        """Calculate upper and lower ATR channels"""
-        atr = self.calculate_atr()
-        if atr.empty:
-            return pd.Series(index=self.data.index), pd.Series(index=self.data.index)
+        atr = true_range.rolling(window=14).mean()
         
-        upper_channel = self.close.shift(1) + (self.multiplier * atr)
-        lower_channel = self.close.shift(1) - (self.multiplier * atr)
+        if atr.iloc[-1] == 0 or np.isnan(atr.iloc[-1]):
+            return 0.0
         
-        return upper_channel.fillna(method='bfill'), lower_channel.fillna(method='bfill')
+        return float(atr.iloc[-1])
     
-    def calculate_volume_ratio(self) -> float:
-        """Calculate current volume ratio vs average"""
+    def calculate_volume_ratio(self):
+        """Relative volume ratio for confirmation"""
         if self.data.empty or len(self.volume) < 20:
             return 1.0
         
-        avg_volume = self.volume.rolling(window=20).mean().iloc[-1]
-        current_volume = self.volume.iloc[-1]
-        
-        if avg_volume == 0:
+        avg_volume = self.volume.rolling(window=20).mean()
+        if avg_volume.iloc[-1] == 0 or np.isnan(avg_volume.iloc[-1]):
             return 1.0
         
-        return current_volume / avg_volume
+        volume_ratio = self.volume.iloc[-1] / avg_volume.iloc[-1]
+        return float(volume_ratio)
     
-    def generate_signals(self) -> Dict[str, Any]:
+    def generate_signals(self):
         """Generate ATR breakout signals"""
         if self.data.empty:
-            return {"signal": "HOLD", "strength": 0.0, "atr": 0.0}
+            return {"signal": "HOLD", "strength": 0.0, "atr": 0.0, "volume_ratio": 1.0}
         
-        upper, lower = self.calculate_channels()
+        atr_value = self.calculate_atr()
         volume_ratio = self.calculate_volume_ratio()
-        atr_value = self.calculate_atr().iloc[-1]
         
-        current_close = self.close.iloc[-1]
+        if atr_value == 0:
+            return {"signal": "HOLD", "strength": 0.0, "atr": atr_value, "volume_ratio": volume_ratio}
         
-        if current_close > upper.iloc[-1] and volume_ratio > 1.5:
+        current_close = float(self.close.iloc[-1])
+        prev_close = float(self.close.iloc[-2]) if len(self.close) > 1 else current_close
+        
+        upper_channel = prev_close + (2.0 * atr_value)
+        lower_channel = prev_close - (2.0 * atr_value)
+        
+        if current_close > upper_channel and volume_ratio > 1.5:
+            signal = "STRONG_BUY"
+            strength = min(100.0, 70.0 + volume_ratio * 15)
+        elif current_close > upper_channel and volume_ratio > 1.0:
             signal = "BUY"
-            strength = min(100.0, 60.0 + (volume_ratio - 1.0) * 40)
-        elif current_close < lower.iloc[-1] and volume_ratio > 1.5:
+            strength = min(80.0, 50.0 + volume_ratio * 10)
+        elif current_close < lower_channel and volume_ratio > 1.5:
+            signal = "STRONG_SELL"
+            strength = min(100.0, 70.0 + volume_ratio * 15)
+        elif current_close < lower_channel and volume_ratio > 1.0:
             signal = "SELL"
-            strength = min(100.0, 60.0 + (volume_ratio - 1.0) * 40)
+            strength = min(80.0, 50.0 + volume_ratio * 10)
         else:
             signal = "HOLD"
-            strength = 20.0
+            strength = 30.0
         
         return {
             "signal": signal,
@@ -246,150 +202,117 @@ class ATRBreakoutEngine:
             "volume_ratio": volume_ratio
         }
 
-# ============================================================================
-# ORDER FLOW ENGINE
-# ============================================================================
+# =============================================================================
+# ORDER FLOW IMBALANCE ENGINE
+# =============================================================================
 
 class OrderFlowEngine:
-    """Institutional order flow and FVG detection"""
+    """Fair Value Gap and institutional block detection"""
     
-    def __init__(self, data: pd.DataFrame):
+    def __init__(self, data):
         self.data = data
         if not data.empty:
             self.high = data['High']
             self.low = data['Low']
-            self.open = data['Open']
             self.close = data['Close']
-            self.volume = data['Volume']
+        else:
+            self.high = pd.Series(dtype=float)
+            self.low = pd.Series(dtype=float)
+            self.close = pd.Series(dtype=float)
     
-    def detect_fair_value_gaps(self) -> pd.DataFrame:
-        """Detect Fair Value Gaps in price action"""
+    def detect_fair_value_gaps(self):
+        """Identify Fair Value Gaps"""
         if self.data.empty or len(self.data) < 10:
-            return pd.DataFrame()
+            return 0
         
-        fvg_list = []
-        
-        for i in range(2, len(self.data)):
-            # Bullish FVG
-            if self.low.iloc[i] > self.high.iloc[i - 2]:
-                gap_size = self.low.iloc[i] - self.high.iloc[i - 2]
-                fvg_list.append({
-                    'index': self.data.index[i],
-                    'type': 'bullish',
-                    'top': self.low.iloc[i],
-                    'bottom': self.high.iloc[i - 2],
-                    'size': gap_size
-                })
-            # Bearish FVG
-            elif self.high.iloc[i] < self.low.iloc[i - 2]:
-                gap_size = self.low.iloc[i - 2] - self.high.iloc[i]
-                fvg_list.append({
-                    'index': self.data.index[i],
-                    'type': 'bearish',
-                    'top': self.low.iloc[i - 2],
-                    'bottom': self.high.iloc[i],
-                    'size': gap_size
-                })
-        
-        return pd.DataFrame(fvg_list)
-    
-    def detect_liquidity_sweeps(self) -> pd.DataFrame:
-        """Detect liquidity sweeps (stop hunts)"""
-        if self.data.empty or len(self.data) < 5:
-            return pd.DataFrame()
-        
-        sweep_list = []
-        
-        for i in range(1, len(self.data) - 1):
-            prev_high = self.high.iloc[:i].max() if i > 0 else self.high.iloc[i]
-            prev_low = self.low.iloc[:i].min() if i > 0 else self.low.iloc[i]
+        count = 0
+        for i in range(2, len(self.data) - 1):
+            bull_gap = self.low.iloc[i] - self.high.iloc[i-2]
+            bear_gap = self.low.iloc[i-2] - self.high.iloc[i]
             
-            if self.high.iloc[i] > prev_high and self.close.iloc[i] < self.high.iloc[i]:
-                sweep_list.append({
-                    'index': self.data.index[i],
-                    'type': 'bullish_sweep'
-                })
-            elif self.low.iloc[i] < prev_low and self.close.iloc[i] > self.low.iloc[i]:
-                sweep_list.append({
-                    'index': self.data.index[i],
-                    'type': 'bearish_sweep'
-                })
+            if bull_gap > 0 or bear_gap > 0:
+                count += 1
         
-        return pd.DataFrame(sweep_list)
+        return count
     
-    def calculate_imbalance_score(self) -> float:
+    def detect_institutional_blocks(self):
+        """Identify institutional order blocks"""
+        if self.data.empty or len(self.data) < 10:
+            return 0
+        
+        count = 0
+        price_change_threshold = 0.02
+        
+        for i in range(1, len(self.data) - 2):
+            current_change = (self.close.iloc[i] - self.close.iloc[i-1]) / self.close.iloc[i-1]
+            if abs(current_change) > price_change_threshold:
+                count += 1
+        
+        return count
+    
+    def calculate_imbalance_score(self):
         """Calculate order flow imbalance score"""
-        fvg_data = self.detect_fair_value_gaps()
-        sweep_data = self.detect_liquidity_sweeps()
+        if self.data.empty:
+            return {"signal": "HOLD", "strength": 0.0, "fvg_count": 0, "block_count": 0, "score": 0}
+        
+        fvg_count = self.detect_fair_value_gaps()
+        block_count = self.detect_institutional_blocks()
+        
+        current_price = float(self.close.iloc[-1])
+        prev_price = float(self.close.iloc[-2]) if len(self.close) > 1 else current_price
+        
+        price_change = (current_price - prev_price) / prev_price if prev_price != 0 else 0
         
         score = 0
         
-        # Count recent FVGs within 1% of current price
-        if not fvg_data.empty and not self.data.empty:
-            current_price = self.close.iloc[-1]
-            recent_fvg = fvg_data.tail(3)
-            
-            for _, fvg in recent_fvg.iterrows():
-                distance = abs(fvg['top'] - current_price) / current_price
-                if distance < 0.01:
-                    if fvg['type'] == 'bullish':
-                        score += 20
-                    else:
-                        score -= 20
+        if price_change > 0.02 and fvg_count > 0:
+            score += 30
+        elif price_change < -0.02 and fvg_count > 0:
+            score -= 30
         
-        # Count recent liquidity sweeps
-        if not sweep_data.empty:
-            recent_sweeps = sweep_data.tail(5)
-            
-            for _, sweep in recent_sweeps.iterrows():
-                if sweep['type'] == 'bullish_sweep':
-                    score += 15
-                elif sweep['type'] == 'bearish_sweep':
-                    score -= 15
+        if block_count > 3:
+            score += 20
+        elif block_count < -3:
+            score -= 20
         
-        return score
-    
-    def generate_signals(self) -> Dict[str, Any]:
-        """Generate order flow signals"""
-        if self.data.empty:
-            return {"signal": "HOLD", "strength": 0.0, "fvg_count": 0}
-        
-        fvg_data = self.detect_fair_value_gaps()
-        sweep_data = self.detect_liquidity_sweeps()
-        imbalance_score = self.calculate_imbalance_score()
-        
-        if imbalance_score >= 30:
+        if score >= 40:
+            signal = "STRONG_BUY"
+            strength = 80.0
+        elif score >= 20:
             signal = "BUY"
-            strength = min(100.0, 50.0 + imbalance_score)
-        elif imbalance_score <= -30:
+            strength = 60.0
+        elif score <= -40:
+            signal = "STRONG_SELL"
+            strength = 80.0
+        elif score <= -20:
             signal = "SELL"
-            strength = min(100.0, 50.0 + abs(imbalance_score))
+            strength = 60.0
         else:
             signal = "HOLD"
-            strength = 20.0
+            strength = 30.0
         
         return {
             "signal": signal,
             "strength": strength,
-            "imbalance_score": imbalance_score,
-            "fvg_count": len(fvg_data) if not fvg_data.empty else 0,
-            "sweep_count": len(sweep_data) if not sweep_data.empty else 0
+            "fvg_count": fvg_count,
+            "block_count": block_count,
+            "score": score
         }
 
-# ============================================================================
+# =============================================================================
 # COMPOSITE SCORING ENGINE
-# ============================================================================
+# =============================================================================
 
 class CompositeScoringEngine:
-    """Aggregate all signals into composite certainty score"""
+    """Unified multivariable scoring system"""
     
-    def __init__(self, kalman_signal: Dict, atr_signal: Dict, flow_signal: Dict):
-        self.kalman = kalman_signal
-        self.atr = atr_signal
-        self.flow = flow_signal
+    def __init__(self, kalman_result, atr_result, flow_result):
+        self.kalman_result = kalman_result
+        self.atr_result = atr_result
+        self.flow_result = flow_result
     
-    def calculate_composite(self) -> Dict[str, Any]:
-        """Calculate weighted composite signal and certainty"""
+    def calculate_composite_score(self):
+        """Calculate weighted composite certainty score"""
         
         weights = {
             'kalman': 0.35,
@@ -397,293 +320,310 @@ class CompositeScoringEngine:
             'flow': 0.35
         }
         
-        signal_map = {
-            'BUY': 1.0,
+        signal_values = {
+            'STRONG_BUY': 1.0,
+            'BUY': 0.6,
             'HOLD': 0.0,
-            'SELL': -1.0
+            'SELL': -0.6,
+            'STRONG_SELL': -1.0
         }
         
-        weighted_score = 0.0
+        total_score = 0.0
         total_certainty = 0.0
         
-        for component, weight in weights.items():
-            signal = getattr(self, component).get('signal', 'HOLD')
-            strength = getattr(self, component).get('strength', 0.0)
-            weighted_score += signal_map.get(signal, 0.0) * weight
-            total_certainty += strength * weight
+        kalman_signal = self.kalman_result['signal']
+        kalman_strength = self.kalman_result['strength']
+        kalman_score = signal_values.get(kalman_signal, 0.0)
+        total_score += kalman_score * weights['kalman']
+        total_certainty += kalman_strength * weights['kalman']
         
-        if weighted_score >= 0.5:
+        atr_signal = self.atr_result['signal']
+        atr_strength = self.atr_result['strength']
+        atr_score = signal_values.get(atr_signal, 0.0)
+        total_score += atr_score * weights['atr']
+        total_certainty += atr_strength * weights['atr']
+        
+        flow_signal = self.flow_result['signal']
+        flow_strength = self.flow_result['strength']
+        flow_score = signal_values.get(flow_signal, 0.0)
+        total_score += flow_score * weights['flow']
+        total_certainty += flow_strength * weights['flow']
+        
+        if total_score >= 0.7:
             final_signal = "STRONG BUY"
-            final_strength = min(95.0, total_certainty + 20)
-        elif weighted_score >= 0.1:
+        elif total_score >= 0.3:
             final_signal = "BUY"
-            final_strength = total_certainty
-        elif weighted_score <= -0.5:
+        elif total_score <= -0.7:
             final_signal = "STRONG SELL"
-            final_strength = min(95.0, total_certainty + 20)
-        elif weighted_score <= -0.1:
+        elif total_score <= -0.3:
             final_signal = "SELL"
-            final_strength = total_certainty
         else:
             final_signal = "HOLD"
-            final_strength = max(20.0, total_certainty)
         
-        reasoning = self.generate_reasoning()
+        certainty = min(95.0, max(20.0, total_certainty + abs(total_score) * 15))
         
         return {
             'signal': final_signal,
-            'certainty': round(min(100.0, max(0.0, final_strength)), 2),
-            'composite_score': weighted_score,
-            'reasoning': reasoning,
+            'certainty': round(certainty, 2),
+            'composite_score': round(total_score, 3),
             'components': {
-                'kalman': self.kalman.get('signal', 'HOLD'),
-                'atr': self.atr.get('signal', 'HOLD'),
-                'flow': self.flow.get('signal', 'HOLD')
+                'kalman': kalman_signal,
+                'atr': atr_signal,
+                'flow': flow_signal
             }
         }
-    
-    def generate_reasoning(self) -> list:
-        """Generate mathematical reasoning for signals"""
-        reasons = []
-        
-        kalman_zscore = self.kalman.get('zscore', 0.0)
-        if abs(kalman_zscore) > 1.5:
-            direction = "overbought" if kalman_zscore > 0 else "oversold"
-            reasons.append(f"Kalman Z-score {kalman_zscore:.2f} indicates {direction} conditions")
-        else:
-            reasons.append(f"Kalman Z-score {kalman_zscore:.2f} within normal bounds")
-        
-        volume_ratio = self.atr.get('volume_ratio', 1.0)
-        if volume_ratio > 1.5:
-            reasons.append(f"Abbormal volume {volume_ratio:.2f}x confirms ATR breakout")
-        else:
-            reasons.append(f"Volume {volume_ratio:.2f}x below breakout threshold")
-        
-        fvg_count = self.flow.get('fvg_count', 0)
-        sweep_count = self.flow.get('sweep_count', 0)
-        imbalance = self.flow.get('imbalance_score', 0)
-        reasons.append(f"Order flow shows {fvg_count} FVGs and {sweep_count} liquidity sweeps with imbalance score {imbalance}")
-        
-        return reasons
 
-# ============================================================================
-# CHART ENGINE
-# ============================================================================
-
-class ChartEngine:
-    """Professional chart generation"""
-    
-    @staticmethod
-    def create_price_chart(data: pd.DataFrame, symbol: str, kalman_state: pd.Series = None) -> go.Figure:
-        """Create candlestick chart with technical overlays"""
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.03,
-            row_heights=[0.7, 0.3]
-        )
-        
-        fig.add_trace(
-            go.Candlestick(
-                x=data.index,
-                open=data['Open'],
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'],
-                name='Price',
-                increasing_line_color='#26a69a',
-                decreasing_line_color='#ef5350'
-            ),
-            row=1, col=1
-        )
-        
-        if kalman_state is not None and len(kalman_state) > 0:
-            fig.add_trace(
-                go.Scatter(
-                    x=data.index,
-                    y=kalman_state,
-                    name='Kalman Filter',
-                    line=dict(color='#58a6ff', width=2)
-                ),
-                row=1, col=1
-            )
-        
-        fig.add_trace(
-            go.Bar(
-                x=data.index,
-                y=data['Volume'],
-                name='Volume',
-                marker_color='#238636',
-                opacity=0.7
-            ),
-            row=2, col=1
-        )
-        
-        fig.update_layout(
-            title=f'{symbol} Institutional Analysis',
-            xaxis_rangeslider_visible=False,
-            height=600,
-            template='plotly_dark',
-            showlegend=True,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
-        
-        fig.update_xaxes(gridcolor='#21262d', row=1, col=1)
-        fig.update_xaxes(gridcolor='#21262d', row=2, col=1)
-        fig.update_yaxes(gridcolor='#21262d', row=1, col=1)
-        fig.update_yaxes(gridcolor='#21262d', row=2, col=1)
-        
-        return fig
-    
-    @staticmethod
-    def create_signal_dashboard(signal_data: Dict) -> go.Figure:
-        """Create signal strength visualization"""
-        components = signal_data.get('components', {})
-        
-        fig = go.Figure()
-        
-        categories = ['Kalman Filter', 'ATR Breakout', 'Order Flow']
-        values = []
-        colors = []
-        
-        for comp in categories:
-            signal = components.get(comp.lower().replace(' ', '_'), 'HOLD')
-            if signal == 'BUY':
-                values.append(1.0)
-                colors.append('#26a69a')
-            elif signal == 'SELL':
-                values.append(-1.0)
-                colors.append('#ef5350')
-            else:
-                values.append(0.0)
-                colors.append('#ab47bc')
-        
-        fig.add_trace(go.Bar(
-            x=categories,
-            y=values,
-            marker_color=colors,
-            name='Signal Strength'
-        ))
-        
-        fig.update_layout(
-            title='Strategy Components Analysis',
-            height=400,
-            template='plotly_dark',
-            showlegend=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            yaxis_title='Signal Direction',
-            yaxis=dict(tickvals=[-1, 0, 1], ticktext=['SELL', 'HOLD', 'BUY'])
-        )
-        
-        fig.update_xaxes(gridcolor='#21262d')
-        fig.update_yaxes(gridcolor='#21262d')
-        
-        return fig
-
-# ============================================================================
+# =============================================================================
 # MAIN APPLICATION
-# ============================================================================
+# =============================================================================
 
-class InstitutionalMarketScanner:
-    """Main application controller"""
+def main():
+    """Main application entry point"""
     
-    def __init__(self):
-        self.data_engine = MarketDataEngine()
-        self.chart_engine = ChartEngine()
+    st.set_page_config(
+        page_title="Institutional Market Scanner",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    def check_access(self) -> bool:
-        """Verify user access credentials"""
-        st.sidebar.title("🔐 Secure Access")
-        
-        password = st.sidebar.text_input("Institutional Password", type="password")
-        
-        if password == ADMIN_PASSWORD:
-            st.sidebar.success("Access Granted")
-            return True
-        elif password:
-            st.sidebar.error("Invalid Password")
-            return False
-        else:
-            st.sidebar.info("Please enter institutional access code")
-            return False
+    # Custom CSS for premium look
+    st.markdown("""
+        <style>
+        .stApp {
+            background-color: #0d1117;
+        }
+        .css-1d391kg {
+            background-color: #161b22;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
-    def render_sidebar(self) -> tuple:
-        """Render sidebar controls"""
-        st.sidebar.title("📊 Controls")
-        
-        selected_asset = st.sidebar.selectbox(
-            "Select Asset",
-            list(ASSETS.keys()),
-            format_func=lambda x: f"{ASSETS[x]} ({x})"
-        )
-        
-        timeframe = st.sidebar.selectbox(
-            "Timeframe",
-            list(TIMEFRAMES.keys()),
-            index=1
-        )
-        
-        interval = st.sidebar.selectbox(
-            "Chart Interval",
-            list(INTERVALS.keys()),
-            index=2
-        )
-        
-        return selected_asset, TIMEFRAMES[timeframe], INTERVALS[interval]
+    # Sidebar
+    st.sidebar.title("🔐 Access Control")
     
-    def render_metrics_row(self, data: pd.DataFrame, signal_result: Dict) -> None:
-        """Render top metrics row"""
-        if data.empty:
-            return
-        
-        current_price = float(data['Close'].iloc[-1])
-        prev_price = float(data['Close'].iloc[-2]) if len(data) > 1 else current_price
-        price_change = ((current_price - prev_price) / prev_price) * 100
-        
-        high_52 = float(data['High'].max())
-        low_52 = float(data['Low'].min())
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "Current Price",
-                f"${current_price:,.4f}",
-                f"{price_change:+.2f}%"
-            )
-        
-        with col2:
-            st.metric(
-                "Period High",
-                f"${high_52:,.4f}",
-                f"{(current_price - high_52) / high_52 * 100:+.2f}% from high"
-            )
-        
-        with col3:
-            st.metric(
-                "Period Low",
-                f"${low_52:,.4f}",
-                f"{(current_price - low_52) / low_52 * 100:+.2f}% from low"
-            )
-        
-        with col4:
-            signal = signal_result.get('signal', 'HOLD')
-            certainty = signal_result.get('certainty', 0)
-            
-            if signal == "STRONG BUY" or signal == "BUY":
-                color = "green"
-                delta = f"{certainty:.1f}% confidence"
-            elif signal == "STRONG SELL" or signal == "SELL":
-                color = "red"
-                delta = f"{certainty:.1f}% confidence"
-            else:
-                color = "orange"
-                delta = f"{certainty:.1f}% confidence"
-            
-            st.metric(
-                "Composite Signal",
-                signal,
-                delta,*_
+    password = st.sidebar.text_input("Enter Access Password", type="password")
+    
+    if password != ADMIN_PASSWORD:
+        st.sidebar.error("Access Denied")
+        st.markdown("# 🔒 Institutional Access Required")
+        st.markdown("Please enter your credentials to access the market scanner.")
+        st.stop()
+    
+    st.sidebar.success("✓ Access Granted")
+    
+    # Main header
+    st.markdown("# 📊 Institutional Market Scanner")
+    st.markdown("### Advanced Quantitative Analysis Terminal")
+    
+    # Asset selector
+    st.sidebar.title("Market Selection")
+    selected_asset = st.sidebar.selectbox(
+        "Select Asset",
+        list(ASSETS.keys()),
+        format_func=lambda x: f"{ASSETS[x]} ({x})"
+    )
+    
+    # Time period selector
+    period = st.sidebar.selectbox(
+        "Time Period",
+        ["1mo", "3mo", "6mo", "1y"],
+        index=1
+    )
+    
+    interval = st.sidebar.selectbox(
+        "Chart Interval",
+        ["30m", "1h", "4h", "1d"],
+        index=0
+    )
+    
+    # Fetch data
+    data_engine = MarketDataEngine()
+    data = data_engine.fetch_data(selected_asset, period, interval)
+    
+    if data.empty:
+        st.error("No data available for this asset. Please try again.")
+        st.stop()
+    
+    # Initialize engines
+    kalman_engine = KalmanArbitrageEngine(data)
+    atr_engine = ATRBreakoutEngine(data)
+    flow_engine = OrderFlowEngine(data)
+    
+    # Generate signals
+    kalman_result = kalman_engine.generate_signals()
+    atr_result = atr_engine.generate_signals()
+    flow_result = flow_engine.generate_signals()
+    
+    # Composite scoring
+    scoring_engine = CompositeScoringEngine(kalman_result, atr_result, flow_result)
+    composite_result = scoring_engine.calculate_composite_score()
+    
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    current_price = float(data['Close'].iloc[-1])
+    price_change = float(data['Close'].iloc[-1] - data['Close'].iloc[-2]) if len(data) > 1 else 0.0
+    price_change_percent = (price_change / data['Close'].iloc[-2] * 100) if len(data) > 1 else 0.0
+    
+    with col1:
+        st.metric("Current Price", f"${current_price:,.2f}", f"{price_change_percent:+.2f}%")
+    
+    with col2:
+        st.metric("Composite Score", f"{composite_result['composite_score']:.3f}")
+    
+    with col3:
+        st.metric("Certainty", f"{composite_result['certainty']}%")
+    
+    with col4:
+        signal_color = "green" if "BUY" in composite_result['signal'] else "red" if "SELL" in composite_result['signal'] else "orange"
+        st.markdown(f"**Signal:** {composite_result['signal']}")
+    
+    # Display signal cards
+    st.markdown("## Composite Signal Analysis")
+    
+    signal = composite_result['signal']
+    if "BUY" in signal:
+        st.success(f"### {signal} - Certainty: {composite_result['certainty']}%")
+    elif "SELL" in signal:
+        st.error(f"### {signal} - Certainty: {composite_result['certainty']}%")
+    else:
+        st.warning(f"### {signal} - Certainty: {composite_result['certainty']}%")
+    
+    # Component signals
+    st.markdown("### Strategy Components")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.info(f"**Kalman Filter:** {kalman_result['signal']}")
+        if 'zscore' in kalman_result:
+            st.write(f"Z-Score: {kalman_result['zscore']:.2f}")
+    
+    with col2:
+        st.info(f"**ATR Breakout:** {atr_result['signal']}")
+        if 'volume_ratio' in atr_result:
+            st.write(f"Volume Ratio: {atr_result['volume_ratio']:.2f}x")
+    
+    with col3:
+        st.info(f"**Order Flow:** {flow_result['signal']}")
+        if 'fvg_count' in flow_result:
+            st.write(f"FVG Count: {flow_result['fvg_count']}")
+    
+    # Price chart
+    st.markdown("## Price Action")
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Candlestick(
+        x=data.index,
+        open=data['Open'],
+        high=data['High'],
+        low=data['Low'],
+        close=data['Close'],
+        name='Price'
+    ))
+    
+    # Add moving averages
+    data['MA20'] = data['Close'].rolling(window=20).mean()
+    data['MA50'] = data['Close'].rolling(window=50).mean()
+    
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data['MA20'],
+        mode='lines',
+        name='MA20',
+        line=dict(color='orange', width=1)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data['MA50'],
+        mode='lines',
+        name='MA50',
+        line=dict(color='blue', width=1)
+    ))
+    
+    fig.update_layout(
+        title=f"{selected_asset} Price Action",
+        xaxis_rangeslider_visible=False,
+        template="plotly_dark",
+        height=600
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Technical indicators
+    st.markdown("## Technical Analysis")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    # RSI
+    delta = data['Close'].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Bollinger Bands
+    data['BB_middle'] = data['Close'].rolling(window=20).mean()
+    bb_std = data['Close'].rolling(window=20).std()
+    data['BB_upper'] = data['BB_middle'] + 2 * bb_std
+    data['BB_lower'] = data['BB_middle'] - 2 * bb_std
+    
+    with col1:
+        st.metric("RSI (14)", f"{rsi.iloc[-1]:.2f}")
+    
+    with col2:
+        st.metric("ATR (14)", f"${atr_result.get('atr', 0):,.4f}")
+    
+    with col3:
+        st.metric("Volume Ratio", f"{atr_result.get('volume_ratio', 1):.2f}x")
+    
+    # Market stats
+    st.markdown("## Market Statistics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("24h High", f"${data['High'].max():,.2f}")
+    
+    with col2:
+        st.metric("24h Low", f"${data['Low'].min():,.2f}")
+    
+    with col3:
+        st.metric("Avg Volume", f"{data['Volume'].mean():,.0f}")
+    
+    with col4:
+        st.metric("Volatility", f"{data['Close'].pct_change().std() * 100:.2f}%")
+    
+    # Risk assessment
+    st.markdown("## Risk Analysis")
+    
+    returns = data['Close'].pct_change().dropna()
+    var_95 = np.percentile(returns, 5)
+    var_99 = np.percentile(returns, 1)
+    sharpe_ratio = (returns.mean() * 252) / (returns.std() * np.sqrt(252)) if returns.std() > 0 else 0
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Var 95%", f"{var_95 * 100:.2f}%")
+    
+    with col2:
+        st.metric("Var 99%", f"{var_99 * 100:.2f}%")
+    
+    with col3:
+        st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("*Institutional Market Scanner v1.0 - For Professional Use Only*")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.info("📈 Advanced quantitative strategies sourced from institutional frameworks.")
 
+if __name__ == "__main__":
+    main()
