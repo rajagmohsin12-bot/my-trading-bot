@@ -1,3 +1,8 @@
+"""Institutional Market Scanner and Trading Dashboard
+Enterprise-grade quantitative analysis platform with Kalman Filter Arbitrage,
+ATR Volatility Breakout, Order Flow Imbalance, and Composite Certainty Scoring.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,610 +10,586 @@ import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+from pykalman import KalmanFilter
 import warnings
+
 warnings.filterwarnings('ignore')
 
-# ============================================================
-# PAGE CONFIGURATION - MUST BE FIRST STREAMLIT COMMAND
-# ============================================================
-st.set_page_config(
-    page_title="MeridianQuant | Institutional Terminal",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ============================================================================
+# ACCESS CONTROL SYSTEM
+# ============================================================================
 
-# ============================================================
-# CUSTOM CSS - INSTITUTIONAL HEDGE FUND TERMINAL THEME
-# ============================================================
-st.markdown("""
-<style>
-    /* Main Terminal Background */
-    .stApp {
-        background: #0a0e17;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
-    }
-    
-    /* Metric Containers */
-    .stMetric {
-        background: linear-gradient(135deg, #141a2a 0%, #0f1524 100%);
-        border: 1px solid #2a3a5e;
-        border-radius: 8px;
-        padding: 20px 16px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    }
-    
-    .stMetric label {
-        color: #8b9bb4 !important;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        font-size: 12px;
-        text-transform: uppercase;
-    }
-    
-    .stMetric [data-testid="stMetricValue"] {
-        color: #ffffff;
-        font-size: 22px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-    }
-    
-    /* Button Styling */
-    .stButton > button {
-        background: #1e2a45;
-        color: #ffffff;
-        border: 1px solid #3a4a6e;
-        border-radius: 6px;
-        font-weight: 500;
-        transition: all 0.3s;
-    }
-    
-    .stButton > button:hover {
-        background: #2a3a5e;
-        border-color: #4a6a9e;
-        transform: translateY(-2px);
-    }
-    
-    /* Expander Styling */
-    .stExpander {
-        background: #141a2a;
-        border: 1px solid #2a3a5e;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    
-    /* Dataframe Styling */
-    .stDataFrame {
-        border: 1px solid #2a3a5e;
-        border-radius: 8px;
-    }
-    
-    /* Progress Bar */
-    .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #00d4ff, #00b8d9);
-    }
-    
-    /* Select Box */
-    .stSelectbox > div > div {
-        background: #141a2a;
-        border: 1px solid #2a3a5e;
-        border-radius: 6px;
-        color: #ffffff;
-    }
-    
-    /* Info Boxes */
-    .stAlert {
-        border-radius: 8px;
-        border: 1px solid #2a3a5e;
-        background: #141a2a;
-    }
-    
-    /* Title */
-    h1, h2, h3 {
-        color: #ffffff !important;
-        letter-spacing: 0.5px;
-    }
-    
-    /* High Contrast Text */
-    .high-contrast {
-        color: #00ff88;
-        font-weight: 600;
-    }
-    
-    .risk-high {
-        color: #ff4444;
-    }
-    
-    .risk-mid {
-        color: #ffaa00;
-    }
-    
-    /* Sidebar */
-    .css-1d391kg {
-        background: #0a0e17;
-    }
-    
-    /* Footer */
-    .footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 10px;
-        text-align: center;
-        color: #8b9bb4;
-        font-size: 11px;
-        background: #0a0e17;
-        border-top: 1px solid #2a3a5e;
-        z-index: 100;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Admin credentials - CHANGE THESE IN PRODUCTION
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "InstQ2024!"
 
-# ============================================================
-# USER ACCESS CONTROL SYSTEM
-# ============================================================
-
-def initialize_access_state():
-    """Initialize session state for access control"""
-    if 'access_verified' not in st.session_state:
-        st.session_state.access_verified = False
-    if 'access_attempts' not in st.session_state:
-        st.session_state.access_attempts = 0
-    if 'admin_login' not in st.session_state:
-        st.session_state.admin_login = False
-
-def check_user_access():
-    """Main access control logic"""
-    initialize_access_state()
+def check_access():
+    """Verify user credentials before showing dashboard"""
+    st.set_page_config(
+        page_title="Institutional Market Scanner",
+        page_icon="🏦",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    if st.session_state.access_verified:
+    if 'authenticated' not in st.session_state:
+        st.session_state['authenticated'] = False
+    
+    if st.session_state['authenticated']:
         return True
     
     st.markdown("""
-        <div style="padding: 40px; text-align: center; background: #141a2a; border-radius: 12px; border: 1px solid #2a3a5e; margin-top: 50px;">
-            <h2 style="color: #ffffff; margin-bottom: 10px;">🔐 Institutional Access Gateway</h2>
-            <p style="color: #8b9bb4;">MeridianQuant Terminal requires verified institutional credentials</p>
-        </div>
+    <style>
+    .login-container {
+        padding: 2rem;
+        border-radius: 10px;
+        background-color: #1e1e1e;
+        margin-top: 5rem;
+    }
+    .login-title {
+        color: #00d4aa;
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 2rem;
+    }
+    </style>
     """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
-        st.markdown("---")
-        access_code = st.text_input(
-            "Institutional Access Code",
-            type="password",
-            placeholder="Enter your authorized access code",
-            help="Contact admin@meridianquant.io for authorized access"
-        )
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.markdown('<div class="login-title">🏦 Institutional Access</div>', unsafe_allow_html=True)
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
         
-        col_btn1, col_btn2 = st.columns(2)
-        
-        with col_btn1:
-            if st.button("🔓 Authenticate", use_container_width=True):
-                # ADMIN MASTER CODE (change this in production)
-                ADMIN_CODE = "MERIDIAN-2024-Q4"
-                
-                if access_code == ADMIN_CODE:
-                    st.session_state.access_verified = True
-                    st.rerun()
-                else:
-                    st.session_state.access_attempts += 1
-                    st.error(f"Invalid access code. Failed attempt #{st.session_state.access_attempts}")
-                    
-        with col_btn2:
-            if st.button("🛡️ Admin Login", use_container_width=True):
-                st.session_state.admin_login = True
+        if st.button("Authenticate", use_container_width=True):
+            if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                st.session_state['authenticated'] = True
                 st.rerun()
-                
-        if st.session_state.admin_login:
-            st.markdown("---")
-            admin_password = st.text_input(
-                "Admin Password",
-                type="password",
-                placeholder="Administrator master key"
-            )
-            
-            col_admin1, _ = st.columns([1, 1])
-            
-            with col_admin1:
-                if st.button("🔑 Verify Admin", use_container_width=True):
-                    # ADMIN MASTER PASSWORD (change this in production)
-                    ADMIN_PASSWORD = "MERIDIAN-ADMIN-2024"
-                    
-                    if admin_password == ADMIN_PASSWORD:
-                        st.session_state.access_verified = True
-                        st.rerun()
-                    else:
-                        st.error("Invalid admin credentials")
+            else:
+                st.error("Invalid credentials. Access denied.")
+                return False
         
-        st.markdown("---")
-        st.markdown(
-            f"<div style='text-align: center; color: #8b9bb4; font-size: 12px;'>"
-            f"Access attempts: {st.session_state.access_attempts} | "
-            f"Status: {'Unauthorized' if not st.session_state.access_verified else 'Verified'}"
-            f"</div>", 
-            unsafe_allow_html=True
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.info("Contact your administrator for access credentials.")
+        return False
+    return True
+
+# ============================================================================
+# QUANTITATIVE STRATEGY ENGINES
+# ============================================================================
+
+class KalmanArbitrageEngine:
+    """Advanced Kalman Filter for statistical arbitrage detection"""
+    
+    def __init__(self, transition_cov=0.01, observation_cov=0.5):
+        self.transition_cov = transition_cov
+        self.observation_cov = observation_cov
+        self.kf = None
+    
+    def calculate_zscore(self, prices, lookback=30):
+        """Calculate dynamic z-score using Kalman Filter state estimates"""
+        if len(prices) < lookback:
+            return 0.0, 0.0
+        
+        # Initialize and fit Kalman Filter
+        initial_state = prices[0]
+        self.kf = KalmanFilter(
+            initial_state_mean=initial_state,
+            initial_state_covariance=1.0,
+            transition_matrices=[1],
+            observation_matrices=[1],
+            transition_covariance=self.transition_cov,
+            observation_covariance=self.observation_cov
         )
         
-        if st.session_state.access_attempts >= 5:
-            st.error("Too many failed attempts. Access locked for security.")
-            
-    return False
-
-# ============================================================
-# QUANTITATIVE STRATEGY ENGINES
-# ============================================================
-
-class KalmanFilterStrategy:
-    """Kalman Filter for Statistical Arbitrage and Dynamic Equilibrium Tracking"""
+        # Get filtered state means
+        state_means, _ = self.kf.filter(prices[:lookback])
+        filtered_state = state_means[-1, 0]
+        
+        # Calculate standard deviation of price vs state
+        std_dev = np.std(prices[-lookback:] - state_means.flatten())
+        
+        if std_dev == 0:
+            return 0.0, 0.0
+        
+        # Z-score = current deviation from equilibrium
+        zscore = (prices[-1] - filtered_state) / std_dev
+        
+        return zscore, filtered_state
     
-    @staticmethod
-    def kalman_filter(data, initial_cov=1.0, process_noise=0.01, measurement_noise=0.5):
-        """
-        Adaptive Kalman Filter for price tracking
-        
-        Parameters:
-        - data: numpy array of values
-        - initial_cov: initial covariance
-        - process_noise: model noise
-        - measurement_noise: observation noise
-        
-        Returns:
-        - filtered_states, covariances
-        """
-        n = len(data)
-        state_mean = data[0]
-        state_cov = initial_cov
-        
-        filtered_states = np.zeros(n)
-        covariances = np.zeros(n)
-        
-        for i in range(n):
-            # Prediction step
-            predicted_mean = state_mean
-            predicted_cov = state_cov + process_noise
-            
-            # Update step (Kalman gain)
-            kalman_gain = predicted_cov / (predicted_cov + measurement_noise)
-            
-            # Observation update
-            state_mean = predicted_mean + kalman_gain * (data[i] - predicted_mean)
-            state_cov = (1 - kalman_gain) * predicted_cov
-            
-            filtered_states[i] = state_mean
-            covariances[i] = state_cov
-        
-        return filtered_states, covariances
-    
-    @staticmethod
-    def calculate_zscore(price, filtered_price, covariances):
-        """
-        Calculate Kalman Z-Score for stat-arb signals
-        
-        High positive z-score → asset overvalued relative to equilibrium
-        High negative z-score → asset undervalued relative to equilibrium
-        """
-        std = np.sqrt(covariances[-1]) if len(covariances) > 0 else 1.0
-        if std == 0:
-            std = 1e-10
-        
-        z_score = (price - filtered_price[-1]) / std if len(filtered_price) > 0 else 0
-        return z_score
-    
-    @staticmethod
-    def generate_signal(price_series, lookback=50, threshold=2.0):
-        """
-        Generate trading signal based on Kalman Z-Score
-        
-        Signal rules:
-        - z_score > +threshold → SHORT (price above equilibrium)
-        - z_score < -threshold → LONG (price below equilibrium)
-        - Otherwise → NEUTRAL
-        """
-        if len(price_series) < lookback:
-            return 0, 0, 0  # neutral, z_score, state
-        
-        # Use last 'lookback' points for efficiency
-        recent_data = price_series[-lookback:]
-        
-        # Apply Kalman Filter
-        filtered, covs = KalmanFilterStrategy.kalman_filter(recent_data)
-        
-        # Current z-score
-        z_score = KalmanFilterStrategy.calculate_zscore(recent_data[-1], filtered, covs)
-        
-        # Signal generation
-        if z_score > threshold:
-            signal = -1  # Bearish (short)
-        elif z_score < -threshold:
-            signal = 1  # Bullish (long)
+    def generate_signal(self, zscore):
+        """Generate signal based on z-score thresholds"""
+        if zscore < -2.0:
+            return "STRONG BUY", 1.0
+        elif zscore < -1.0:
+            return "BUY", 0.7
+        elif zscore > 2.0:
+            return "STRONG SELL", 1.0
+        elif zscore > 1.0:
+            return "SELL", 0.7
         else:
-            signal = 0  # Neutral
-        
-        return signal, z_score, filtered[-1]
+            return "HOLD", 0.3
 
-class VolatilityBreakoutStrategy:
-    """ATR Channel Breakout with Institutional Volume Confirmation"""
+class ATRBreakoutEngine:
+    """Institutional ATR Channel Breakout with volume confirmation"""
     
-    @staticmethod
-    def calculate_atr(high, low, close, period=14):
-        """
-        Average True Range calculation
+    def __init__(self, period=14, multiplier=2.0, volume_period=20):
+        self.period = period
+        self.multiplier = multiplier
+        self.volume_period = volume_period
+    
+    def calculate_atr(self, df, period=14):
+        """Calculate Average True Range"""
+        high = df['High'].values
+        low = df['Low'].values
+        close = df['Close'].values
         
-        True Range = max(high-low, |high-prev_close|, |low-prev_close|)
-        """
-        high = np.array(high)
-        low = np.array(low)
-        close = np.array(close)
+        tr = np.zeros(len(close))
+        tr[0] = high[0] - low[0]
         
-        tr1 = high[1:] - low[1:]
-        tr2 = np.abs(high[1:] - close[:-1])
-        tr3 = np.abs(low[1:] - close[:-1])
+        for i in range(1, len(close)):
+            tr[i] = max(
+                high[i] - low[i],
+                abs(high[i] - close[i-1]),
+                abs(low[i] - close[i-1])
+            )
         
-        tr = np.maximum(np.maximum(tr1, tr2), tr3)
-        atr = np.zeros(len(close))
-        atr[period] = np.mean(tr[:period])
-        
-        for i in range(period + 1, len(close)):
-            atr[i] = (atr[i-1] * (period - 1) + tr[i-1]) / period
-        
+        atr = pd.Series(tr).rolling(window=period).mean().values
         return atr
     
-    @staticmethod
-    def detect_breakout(close, high, low, atr, multiplier=2.0, lookback=10):
-        """
-        Detect volatility breakouts
+    def detect_breakout(self, df):
+        """Detect volatility breakouts with volume confirmation"""
+        if len(df) < self.period + self.volume_period:
+            return "HOLD", 0.0
         
-        Conditions:
-        - Price breaks above upper ATR channel with volume confirmation
-        - Price breaks below lower ATR channel with volume confirmation
-        """
-        if len(close) < lookback + 2:
-            return 0, 0, 0
+        atr = self.calculate_atr(df, self.period)
+        volume = df['Volume'].values
+        close = df['Close'].values
         
-        upper_channel = close + (multiplier * atr)
-        lower_channel = close - (multiplier * atr)
+        # Volume ratio (current vs average)
+        avg_volume = np.mean(volume[-self.volume_period:])
+        current_volume = volume[-1]
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
         
-        current_price = close[-1]
-        current_atr = atr[-1] if atr[-1] > 0 else 1e-10
+        # Upper and lower channels
+        upper_channel = close[-1] + (self.multiplier * atr[-1])
+        lower_channel = close[-1] - (self.multiplier * atr[-1])
         
         # Breakout detection
-        if current_price > upper_channel[-2]:  # Breaking above
-            strength = min((current_price - upper_channel[-2]) / current_atr, 3.0)
-            signal = 1
-        elif current_price < lower_channel[-2]:  # Breaking below
-            strength = min((lower_channel[-2] - current_price) / current_atr, 3.0)
-            signal = -1
+        if close[-1] > upper_channel and volume_ratio > 1.2:
+            return "BUY", min(volume_ratio / 2.0, 1.0)
+        elif close[-1] < lower_channel and volume_ratio > 1.2:
+            return "SELL", min(volume_ratio / 2.0, 1.0)
         else:
-            signal = 0
-            strength = 0
-        
-        # Volume confirmation (simulated here - real impl would use volume data)
-        volume_ratio = np.random.uniform(0.8, 1.5)  # Placeholder, replace with actual volume
-        
-        return signal, strength, volume_ratio
+            # Check for channel squeeze
+            atr_pct = (atr[-1] / close[-1]) * 100
+            if atr_pct < 1.0:
+                return "HOLD", 0.2
+            return "HOLD", 0.1
 
-class OrderFlowImbalanceStrategy:
-    """Fair Value Gap (FVG) and Institutional Liquidity Block Detection"""
+class OrderFlowImbalanceEngine:
+    """Fair Value Gap and institutional liquidity detection"""
     
-    @staticmethod
-    def detect_fvg(high, low, close, lookback=5):
-        """
-        Fair Value Gap detection
-        
-        FVG occurs when current low is above previous high in an uptrend
-        or current high is below previous low in a downtrend (gap)
-        """
-        if len(high) < lookback + 2:
-            return 0, 0
-        
-        # Look for 3-candle patterns
-        fvg_signals = []
-        fvg_strengths = []
-        
-        for i in range(2, min(len(high), lookback + 2)):
-            # Bullish FVG: low[i] > high[i-2]
-            if low[i] > high[i-2]:
-                gap_size = low[i] - high[i-2]
-                avg_range = np.mean([high[i]-low[i], high[i-1]-low[i-1], high[i-2]-low[i-2]])
-                if avg_range > 0:
-                    strength = min(gap_size / avg_range, 3.0)
-                    fvg_signals.append(1)
-                    fvg_strengths.append(strength)
-            
-            # Bearish FVG: high[i] < low[i-2]
-            elif high[i] < low[i-2]:
-                gap_size = low[i-2] - high[i]
-                avg_range = np.mean([high[i]-low[i], high[i-1]-low[i-1], high[i-2]-low[i-2]])
-                if avg_range > 0:
-                    strength = min(gap_size / avg_range, 3.0)
-                    fvg_signals.append(-1)
-                    fvg_strengths.append(strength)
-        
-        if len(fvg_signals) == 0:
-            return 0, 0
-        
-        recent_signal = fvg_signals[-1]
-        avg_strength = np.mean(fvg_strengths[-3:]) if len(fvg_strengths) >= 3 else max(fvg_strengths, default=0)
-        
-        return recent_signal, avg_strength
+    def __init__(self, lookback=10):
+        self.lookback = lookback
     
-    @staticmethod
-    def detect_institutional_blocks(close, high, low, volume, lookback=20):
-        """
-        Detect institutional order blocks (accumulation/distribution zones)
+    def find_fair_value_gaps(self, df):
+        """Identify Fair Value Gaps in price structure"""
+        if len(df) < 20:
+            return 0.0, 0.0
         
-        Uses volume displacement and price rejection patterns
-        """
-        if len(close) < lookback:
-            return 0, 0
+        high = df['High'].values
+        low = df['Low'].values
+        close = df['Close'].values
         
-        # Identify volume spikes (institutional participation)
-        avg_volume = np.mean(volume[-lookback:]) if len(volume) >= lookback else 1
-        recent_blocks = []
+        # Detect FVG (3-candle pattern)
+        bullish_fvg = False
+        bearish_fvg = False
         
-        for i in range(max(2, len(close)-lookback), len(close)):
-            # Volume spike detection (2x average = institutional footprint)
-            if i > 0 and volume[i] > 2 * avg_volume:
-                # Price rejection (wick) detection
-                upper_wick = high[i] - max(open_price := close[i], close[i-1] if i > 0 else close[i])
-                lower_wick = min(open_price := close[i], close[i-1] if i > 0 else close[i]) - low[i]
-                
-                # Bullish block: large lower wick + volume
-                if lower_wick > upper_wick and lower_wick > 0.1 * (high[i] - low[i]):
-                    recent_blocks.append(1)
-                # Bearish block: large upper wick + volume
-                elif upper_wick > lower_wick and upper_wick > 0.1 * (high[i] - low[i]):
-                    recent_blocks.append(-1)
+        for i in range(len(df) - 3, len(df) - 1):
+            # Bullish FVG: gap between low[i+2] and high[i]
+            if low[i+2] > high[i]:
+                bullish_fvg = True
+            # Bearish FVG: gap between high[i+2] and low[i]
+            if high[i+2] < low[i]:
+                bearish_fvg = True
         
-        if len(recent_blocks) == 0:
-            return 0, 0
+        # Calculate order flow imbalance
+        buy_volume = 0
+        sell_volume = 0
+        for i in range(max(0, len(df) - self.lookback), len(df)):
+            if close[i] > df['Open'].values[i]:
+                buy_volume += df['Volume'].values[i]
+            else:
+                sell_volume += df['Volume'].values[i]
         
-        # Weighted recent block judgment
-        weighted_signal = np.mean(recent_blocks[-5:]) if len(recent_blocks) >= 5 else np.mean(recent_blocks)
-        strength = min(abs(weighted_signal) * 2, 3.0)
+        total_volume = buy_volume + sell_volume
+        if total_volume == 0:
+            return 0.0, 0.0
         
-        return int(np.sign(weighted_signal)), strength
+        imbalance_ratio = (buy_volume - sell_volume) / total_volume
+        
+        if bullish_fvg and imbalance_ratio > 0.3:
+            return "BUY", imbalance_ratio
+        elif bearish_fvg and imbalance_ratio < -0.3:
+            return "SELL", abs(imbalance_ratio)
+        else:
+            return "HOLD", abs(imbalance_ratio) * 0.5
 
 class CompositeScorer:
-    """Unified Multi-Variable Institutional Certainty Scoring"""
+    """Unified scoring engine for composite signal generation"""
     
-    @staticmethod
-    def compute_certainty_score(kalman_signal, vol_signal, fvg_signal, block_signal, 
-                                kalman_strength=1.0, vol_strength=1.0, 
-                                fvg_strength=1.0, block_strength=1.0):
-        """
-        Compute composite institutional certainty score
-        
-        Each signal contributes with its strength weight
-        Final score ranges from -100 (strongest sell) to +100 (strongest buy)
-        """
-        # Weights for each strategy (institutional allocation)
-        weights = {
-            'kalman': 0.35,  # Statistical arbitrage - always active
-            'volatility': 0.25,  # Volatility breakout
-            'fvg': 0.25,  # Fair value gap
-            'block': 0.15  # Order blocks
+    def __init__(self):
+        self.weights = {
+            'kalman': 0.4,
+            'atr': 0.35,
+            'orderflow': 0.25
         }
         
-        # Composite signal computation
-        composite = (
-            kalman_signal * kalman_strength * weights['kalman'] +
-            vol_signal * vol_strength * weights['volatility'] +
-            fvg_signal * fvg_strength * weights['fvg'] +
-            block_signal * block_strength * weights['block']
+        self.signal_scores = {
+            'STRONG BUY': 2.0,
+            'BUY': 1.0,
+            'HOLD': 0.0,
+            'SELL': -1.0,
+            'STRONG SELL': -2.0
+        }
+    
+    def calculate_composite_score(self, signals):
+        """Calculate weighted composite score with certainty"""
+        total_score = 0.0
+        total_certainty = 0.0
+        
+        for strategy, signal in signals.items():
+            if signal['signal'] in self.signal_scores:
+                weight = self.weights.get(strategy, 0)
+                score = self.signal_scores[signal['signal']]
+                certainty = signal['certainty']
+                
+                total_score += weight * score * certainty
+                total_certainty += weight * certainty
+        
+        if total_certainty == 0:
+            return "HOLD", 0.0
+        
+        # Normalize to percentage
+        normalized_score = total_score / 2.0
+        certainty_pct = min(abs(normalized_score) * 100, 100.0)
+        
+        # Determine final signal
+        if normalized_score > 0.7:
+            final_signal = "STRONG BUY"
+        elif normalized_score > 0.3:
+            final_signal = "BUY"
+        elif normalized_score < -0.7:
+            final_signal = "STRONG SELL"
+        elif normalized_score < -0.3:
+            final_signal = "SELL"
+        else:
+            final_signal = "HOLD"
+        
+        return final_signal, certainty_pct
+
+# ============================================================================
+# DATA FETCHING AND PROCESSING
+# ============================================================================
+
+def fetch_market_data(ticker, period="1mo", interval="1d"):
+    """Safely fetch historical data from Yahoo Finance"""
+    try:
+        data = yf.download(ticker, period=period, interval=interval, progress=False)
+        if data.empty:
+            return None
+        
+        # Flatten MultiIndex columns safely
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        
+        # Ensure all required columns exist
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in required_cols:
+            if col not in data.columns:
+                data[col] = np.nan
+        
+        return data.dropna()
+    except Exception as e:
+        st.error(f"Data fetch error for {ticker}: {str(e)}")
+        return None
+
+def get_live_price(ticker):
+    """Get current live price for ticker"""
+    try:
+        ticker_data = yf.Ticker(ticker)
+        hist = ticker_data.history(period="1d")
+        if not hist.empty:
+            return hist['Close'].iloc[-1]
+        return None
+    except Exception:
+        return None
+
+# ============================================================================
+# VISUALIZATION FUNCTIONS
+# ============================================================================
+
+def create_price_chart(df, ticker):
+    """Create interactive price chart with indicators"""
+    fig = make_subplots(
+        rows=3, cols=1,
+        row_heights=[0.6, 0.2, 0.2],
+        vertical_spacing=0.03
+    )
+    
+    # Price candlesticks
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name="Price",
+            increasing_line_color='#00d4aa',
+            decreasing_line_color='#ff4d4d'
+        ),
+        row=1, col=1
+    )
+    
+    # Volume bars
+    colors = ['#00d4aa' if df['Close'].iloc[i] >= df['Open'].iloc[i] 
+              else '#ff4d4d' for i in range(len(df))]
+    fig.add_trace(
+        go.Bar(
+            x=df.index,
+            y=df['Volume'],
+            name="Volume",
+            marker_color=colors,
+            opacity=0.3
+        ),
+        row=2, col=1
+    )
+    
+    # Simple moving averages
+    if len(df) >= 20:
+        sma20 = df['Close'].rolling(window=20).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=sma20,
+                name="SMA 20",
+                line=dict(color='#ffd700', width=1.5)
+            ),
+            row=1, col=1
+        )
+    
+    if len(df) >= 50:
+        sma50 = df['Close'].rolling(window=50).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=sma50,
+                name="SMA 50",
+                line=dict(color='#ff69b4', width=1.5)
+            ),
+            row=1, col=1
+        )
+    
+    # RSI
+    if len(df) >= 14:
+        delta = df['Close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=rsi,
+                name="RSI",
+                line=dict(color='#ffffff', width=1.5)
+            ),
+            row=3, col=1
         )
         
-        # Normalize to -1 to +1 range
-        max_composite = weights['kalman'] * 3 + weights['volatility'] * 3 + weights['fvg'] * 3 + weights['block'] * 3
-        normalized_score = composite / max_composite if max_composite > 0 else 0
-        
-        # Convert to percentage (-100 to +100)
-        certainty_score = normalized_score * 100
-        
-        return certainty_score
+        fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
     
-    @staticmethod
-    def classify_signal(score):
-        """
-        Classify composite score into trading signal
-        
-        Score ranges:
-        - 60 to 100: STRONG BUY
-        - 20 to 60: BUY
-        - -20 to 20: HOLD
-        - -60 to -20: SELL
-        - -100 to -60: STRONG SELL
-        """
-        if score >= 60:
-            return "STRONG BUY", 3
-        elif score >= 20:
-            return "BUY", 2
-        elif score >= -20:
-            return "HOLD", 0
-        elif score >= -60:
-            return "SELL", -2
-        else:
-            return "STRONG SELL", -3
-
-# ============================================================
-# DATA PIPELINE
-# ============================================================
-
-class MarketDataFetcher:
-    """Robust Market Data Pipeline with Atomic Fetching"""
+    fig.update_layout(
+        title=f"{ticker} - Institutional Analysis",
+        xaxis_rangeslider_visible=False,
+        height=800,
+        showlegend=False,
+        paper_bgcolor='#0e1117',
+        plot_bgcolor='#0e1117',
+        font=dict(color='#ffffff'),
+        template="plotly_dark"
+    )
     
-    ASSETS = {
-        'BTC-USD': {'name': 'Bitcoin', 'type': 'Crypto', 'yahoo_symbol': 'BTC-USD'},
-        'ETH-USD': {'name': 'Ethereum', 'type': 'Crypto', 'yahoo_symbol': 'ETH-USD'},
-        'EURUSD=X': {'name': 'EUR/USD', 'type': 'Forex', 'yahoo_symbol': 'EURUSD=X'},
-        'GBPUSD=X': {'name': 'GBP/USD', 'type': 'Forex', 'yahoo_symbol': 'GBPUSD=X'},
-        'GC=F': {'name': 'Gold Futures', 'type': 'Commodity', 'yahoo_symbol': 'GC=F'}
-    }
-    
-    @staticmethod
-    def fetch_data(symbol, period='1mo', interval='1h'):
-        """
-        Safely fetch market data from Yahoo Finance
-        
-        Handles empty DataFrames, MultiIndex columns, and network errors
-        """
-        try:
-            # Attempt asynchronous download with retry
-            for attempt in range(3):
-                try:
-                    data = yf.download(
-                        symbol,
-                        period=period,
-                        interval=interval,
-                        progress=False,
-                        auto_adjust=True,
-                        threads=True
-                    )
-                    break
-                except Exception as e:
-                    if attempt == 2:
-                        return pd.DataFrame()
-                    continue
-            
-            if data.empty:
-                return pd.DataFrame()
-            
-            # Flatten MultiIndex columns immediately
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = data.columns.get_level_values(0)
-            
-            # Ensure required columns exist
-            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            for col in required_cols:
-                if col not in data.columns:
-                    return pd.DataFrame()
-            
-            # Remove any NaN values in critical columns
-            data = data.dropna(subset=['Close'])
-            
-            return data
-            
-        except Exception:
-            return pd.DataFrame()
+    return fig
 
-# ============================================================
-# MAIN DASHBOARD UI
-# ============================================================
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
 
-def render_dashboard(asset_symbol, period, interval):
-    """
-    Render the main institutional dashboard with all strategies
-    """
-    # Fetch data safely
-    fetcher = MarketDataFetcher()
-    data = fetcher.fetch_data(asset_symbol, period, interval)
+def main():
+    """Main application entry point"""
     
-    if data.empty or len(data) < 50:
-        st.error("⚠️ Insufficient market data. Please select a different asset or timeframe.")
+    # Access control
+    if not check_access():
         return
     
-    # ==========================================
-    # METRIC CAR_
+    # Custom CSS for premium look
+    st.markdown("""
+    <style>
+    .main-header {
+        color: #00d4aa;
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+    }
+    .signal-box {
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }
+    .metric-label {
+        color: #8b949e;
+        font-size: 0.85rem;
+    }
+    .metric-value {
+        color: #ffffff;
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    .sidebar-header {
+        color: #00d4aa;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Sidebar configuration
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">🏦 Scanner Configuration</div>', unsafe_allow_html=True)
+        
+        # Asset selector
+        available_assets = {
+            "Bitcoin": "BTC-USD",
+            "Ethereum": "ETH-USD",
+            "EUR/USD": "EURUSD=X",
+            "GBP/USD": "GBPUSD=X",
+            "Gold": "GC=F"
+        }
+        
+        selected_asset = st.selectbox(
+            "Select Asset",
+            list(available_assets.keys())
+        )
+        
+        ticker = available_assets[selected_asset]
+        
+        # Time period selector
+        period_options = {
+            "1 Day": "1d",
+            "5 Days": "5d",
+            "1 Month": "1mo",
+            "3 Months": "3mo"
+        }
+        
+        selected_period = st.selectbox(
+            "Analysis Period",
+            list(period_options.keys())
+        )
+        
+        period = period_options[selected_period]
+        
+        # Advanced settings
+        with st.expander("Advanced Parameters"):
+            kalman_transition = st.slider(
+                "Kalman Transition Covariance",
+                min_value=0.001,
+                max_value=0.1,
+                value=0.01,
+                step=0.001,
+                format="%.3f"
+            )
+            
+            atr_multiplier = st.slider(
+                "ATR Multiplier",
+                min_value=1.0,
+                max_value=3.0,
+                value=2.0,
+                step=0.1
+            )
+        
+        st.divider()
+        
+        # Logout button
+        if st.button("Logout", use_container_width=True):
+            st.session_state['authenticated'] = False
+            st.rerun()
+    
+    # Main header
+    st.markdown('<div class="main-header">📊 Institutional Market Intelligence</div>', unsafe_allow_html=True)
+    
+    # Fetch data
+    with st.spinner(f"Fetching {selected_asset} market data..."):
+        df = fetch_market_data(ticker, period=period)
+    
+    if df is None:
+        st.error(f"Failed to load data for {selected_asset}. Please try again.")
+        return
+    
+    # Get live price
+    live_price = get_live_price(ticker)
+    
+    # Initialize strategy engines
+    kalman_engine = KalmanArbitrageEngine(
+        transition_cov=kalman_transition
+    )
+    atr_engine = ATRBreakoutEngine(multiplier=atr_multiplier)
+    orderflow_engine = OrderFlowImbalanceEngine()
+    scorer = CompositeScorer()
+    
+    # Calculate signals
+    kalman_zscore, equilibrium = kalman_engine.calculate_zscore(
+        df['Close'].values
+    )
+    kalman_signal, kalman_certainty = kalman_engine.generate_signal(kalman_zscore)
+    
+    atr_signal, atr_certainty = atr_engine.detect_breakout(df)
+    
+    orderflow_signal, orderflow_certainty = orderflow_engine.find_fair_value_gaps(df)
+    
+    # Combine signals
+    all_signals = {
+        'kalman': {'signal': kalman_signal, 'certainty': kalman_certainty},
+        'atr': {'signal': atr_signal, 'certainty': atr_certainty},
+        'orderflow': {'signal': orderflow_signal, 'certainty': orderflow_certainty}
+    }
+    
+    final_signal, certainty_pct = scorer.calculate_composite_score(all_signals)
+    
+    # Display metrics row
+    col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+    
+    with col_metric1:
+        st.markdown('<div class="metric-label">Current Price</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-value">${live_price:,.2f}</div>' 
+                    if live_price else '<div class="metric-value">N/A</div>', 
+                    unsafe_allow_html=True)
+    
+    with col_metric2:
+        st.markdown('<div class="metric-label">24h Change</div>', unsafe_allow_html=True)
+        if len(df) >= 2:
+            change = ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / 
+                     df['Close'].iloc[-2] * 100)
+            color = "#00d4aa" if change >= 0 else "#ff4d4d"
+            st.markdown(
+                f'<div class="metric-value" style="color: {color}">{change:+.2f}%</div>',
+                unsafe_allow_html=True
+            )
+    
+    with col_metric3:
+        st.markdown('<div class="metric-label">Volume (24h)</div>', unsafe_allow_html=True)
+        volume_billions = df['Volume'].iloc[-1] / 1e9
+        st.markdown(
+            f'<div class="metric-value">${volume_billions:.*_
