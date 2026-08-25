@@ -73,7 +73,6 @@ class KalmanArbitrageEngine:
         if len(self.price) < 30:
             return 0.0
         
-        # Using simple moving average as proxy for state estimation
         rolling_mean = self.price.rolling(window=20).mean()
         rolling_std = self.price.rolling(window=20).std()
         
@@ -250,8 +249,8 @@ class OrderFlowEngine:
         
         return count
     
-    def calculate_imbalance_score(self):
-        """Calculate order flow imbalance score"""
+    def generate_signals(self):
+        """Generate order flow signals"""
         if self.data.empty:
             return {"signal": "HOLD", "strength": 0.0, "fvg_count": 0, "block_count": 0, "score": 0}
         
@@ -476,7 +475,6 @@ def main():
         st.metric("Certainty", f"{composite_result['certainty']}%")
     
     with col4:
-        signal_color = "green" if "BUY" in composite_result['signal'] else "red" if "SELL" in composite_result['signal'] else "orange"
         st.markdown(f"**Signal:** {composite_result['signal']}")
     
     # Display signal cards
